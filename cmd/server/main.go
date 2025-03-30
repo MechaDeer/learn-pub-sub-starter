@@ -28,12 +28,9 @@ func main() {
 		log.Fatalf("failed to create channel: %v", err)
 	}
 
-	err = pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
+	pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
 		IsPaused: true,
 	})
-	if err != nil {
-		log.Printf("could not publish time: %v", err)
-	}
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
