@@ -1,7 +1,32 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	amqp "github.com/rabbitmq/amqp091-go"
+)
 
 func main() {
+	const connString = "amqp://guest:guest@localhost:5672/"
+
 	fmt.Println("Starting Peril server...")
+	conn, err := amqp.Dial(connString)
+	if err != nil {
+		log.Fatalf("failed to connect to rabbitMQ: %v", err)
+	}
+	defer conn.Close()
+	fmt.Println("Connection to Peril server was successful")
+
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+	<-sigc
+	fmt.Println("Shutting down Peril server...")
 }
