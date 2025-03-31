@@ -13,30 +13,28 @@ import (
 func main() {
 	const connString = "amqp://guest:guest@localhost:5672/"
 	fmt.Println("Starting Peril client...")
+
 	conn, err := amqp.Dial(connString)
 	if err != nil {
 		log.Fatalf("failed to connect to rabbitMQ: %v", err)
 	}
 	defer conn.Close()
+	fmt.Println("Peril game client connected to RabbitMQ!")
 
 	uname, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("can't start without username: %v", err)
 	}
-	_, queue, err := pubsub.DeclareAndBind(
-		conn,
-		routing.ExchangePerilDirect,
-		fmt.Sprintf("%s.%s", routing.PauseKey, uname),
-		routing.PauseKey,
-		pubsub.SimpleQueueTransient,
-	)
-
-	if err != nil {
-		log.Fatalf("could not subscribe to pause: %v", err)
-	}
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
 	gs := gamelogic.NewGameState(uname)
+	pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+gs.GetUsername(),
+		routing.PauseKey,
+		pubsub.SimpleQueueTransient,
+		handlerPause(gs),
+	)
 
 	for {
 		words := gamelogic.GetInput()
@@ -71,5 +69,12 @@ func main() {
 		default:
 			fmt.Println("unknown command")
 		}
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
 	}
 }
