@@ -41,7 +41,10 @@ func DeclareAndBind(
 		return nil, amqp.Queue{}, errors.New("invalid queue type")
 	}
 
-	queue, err := ch.QueueDeclare(queueName, durable, autoDelete, exclusive, false, nil)
+	table := amqp.Table{}
+	// value for it is the name of the exchange we want to use as dead letter
+	table["x-dead-letter-exchange"] = "peril_dlx"
+	queue, err := ch.QueueDeclare(queueName, durable, autoDelete, exclusive, false, table)
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
