@@ -27,7 +27,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType int, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 	ch, queue, err := DeclareAndBind(
 		conn,
@@ -61,8 +61,18 @@ func SubscribeJSON[T any](
 				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			handler(target)
-			msg.Ack(false)
+			ackType := handler(target)
+			switch ackType {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("message is acknoledged")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("message is discarded")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("message is re queued")
+			}
 		}
 	}()
 
