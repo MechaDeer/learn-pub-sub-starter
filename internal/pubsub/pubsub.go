@@ -21,6 +21,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return err
 }
 
+// it does create and bind to queue, if queue already exists it will crash the client
 func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange,
