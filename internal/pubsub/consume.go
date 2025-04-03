@@ -24,6 +24,7 @@ func DeclareAndBind(
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
+	ch.Qos(10, 0, false)
 
 	var durable bool
 	var autoDelete bool
