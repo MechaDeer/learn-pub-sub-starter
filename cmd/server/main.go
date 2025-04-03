@@ -26,19 +26,21 @@ func main() {
 		log.Fatalf("failed to create channel: %v", err)
 	}
 
-	gamelogic.PrintServerHelp()
-
-	_, queue, err := pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogSlug+".*",
 		pubsub.SimpleQueueDurable,
+		// this will log the data, but if more then 1 is subsribed
+		// multiple logs will appear
+		handlerLogs(),
 	)
 	if err != nil {
-		log.Fatalf("could not subscribe to pause: %v", err)
+		log.Fatalf("could not starting consuming logs: %v", err)
 	}
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
+
+	gamelogic.PrintServerHelp()
 
 	for {
 		input := gamelogic.GetInput()

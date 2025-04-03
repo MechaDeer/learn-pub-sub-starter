@@ -23,65 +23,6 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return err
 }
 
-// it does create and bind to queue, if queue already exists it will crash the client
-func SubscribeJSON[T any](
-	conn *amqp.Connection,
-	exchange,
-	queueName,
-	key string,
-	simpleQueueType int, // an enum to represent "durable" or "transient"
-	handler func(T) Acktype,
-) error {
-	ch, queue, err := DeclareAndBind(
-		conn,
-		exchange,
-		queueName,
-		key,
-		simpleQueueType,
-	)
-	if err != nil {
-		return fmt.Errorf("could not declare and bind queue: %v", err)
-	}
-
-	msgs, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
-	if err != nil {
-		return fmt.Errorf("could not subscribe to pause: %v", err)
-	}
-
-	// this needs to be in different scope, cause we want to recreate JSON
-	// otherwise we might get a residual code
-	unmarshaller := func(data []byte) (T, error) {
-		var target T
-		err := json.Unmarshal(data, &target)
-		return target, err
-	}
-
-	go func() {
-		defer ch.Close()
-		for msg := range msgs {
-			target, err := unmarshaller(msg.Body)
-			if err != nil {
-				fmt.Printf("could not unmarshal message: %v\n", err)
-				continue
-			}
-			ackType := handler(target)
-			switch ackType {
-			case Ack:
-				msg.Ack(false)
-				fmt.Println("message is acknoledged")
-			case NackDiscard:
-				msg.Nack(false, false)
-				fmt.Println("message is discarded")
-			case NackRequeue:
-				msg.Nack(false, true)
-				fmt.Println("message is re queued")
-			}
-		}
-	}()
-
-	return nil
-}
-
 func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	var buffer bytes.Buffer
 	encoder := gob.NewEncoder(&buffer)
@@ -95,4 +36,101 @@ func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
 		Body:        buffer.Bytes(),
 	})
 	return err
+}
+
+// it does create and bind to queue, if queue already exists it will crash the client
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) Acktype,
+) error {
+	return subscribe[T](
+		conn,
+		exchange,
+		queueName,
+		key,
+		simpleQueueType,
+		handler,
+		func(data []byte) (T, error) {
+			var target T
+			err := json.Unmarshal(data, &target)
+			return target, err
+		},
+	)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) Acktype,
+) error {
+	return subscribe[T](
+		conn,
+		exchange,
+		queueName,
+		key,
+		simpleQueueType,
+		handler,
+		func(data []byte) (T, error) {
+			buffer := bytes.NewBuffer(data)
+			decoder := gob.NewDecoder(buffer)
+			var target T
+			err := decoder.Decode(&target)
+			return target, err
+		},
+	)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) Acktype,
+	unmarshaller func([]byte) (T, error),
+) error {
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		return fmt.Errorf("could not declare and bind queue: %v", err)
+	}
+
+	msgs, err := ch.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		false,      // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
+	if err != nil {
+		return fmt.Errorf("could not consume messages: %v", err)
+	}
+
+	go func() {
+		defer ch.Close()
+		for msg := range msgs {
+			target, err := unmarshaller(msg.Body)
+			if err != nil {
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
+			}
+			switch handler(target) {
+			case Ack:
+				msg.Ack(false)
+			case NackDiscard:
+				msg.Nack(false, false)
+			case NackRequeue:
+				msg.Nack(false, true)
+			}
+		}
+	}()
+	return nil
 }
